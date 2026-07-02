@@ -1,4 +1,6 @@
-package com.example;
+package com.clicksafe;
+
+import com.fazecast.jSerialComm.SerialPort;
 
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
@@ -15,6 +17,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.io.InputStream;
 
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
@@ -32,6 +35,7 @@ public class App extends ListenerAdapter {
     public static App listener = new App();
 
     //misc vars
+    public volatile String mainReturnID = "";
 
     public static void main(String[] args) throws InterruptedException {
 
@@ -58,9 +62,11 @@ public class App extends ListenerAdapter {
         String channelName    = event.getChannel().getName();
         String id             = event.getChannel().getId();
 
-        if(messageContent.length() > 0)
+        if(messageContent.length() > 0){
             if(!messageContent.substring(0,1).equals(","))
                 return;
+        }
+        else return;
 
         System.out.println("\nCHANNEL: " + channelName + "-" + id + "\nUSER: " + authorName + "\nMESS: " + messageContent);
         listener.receiveMessage(id + " " + authorName + " " + messageContent.substring(1));
@@ -79,8 +85,11 @@ public class App extends ListenerAdapter {
             first = input.next();
 
         switch(first){
+            case "start":
+                listener.receiveMessage("239845");
+                return "Okay...";
             default:
-                return "Command received!";
+                return "I'm sorry. I did not understand this message.";
         }
 
     }
@@ -97,6 +106,50 @@ public class App extends ListenerAdapter {
         }
     }
 
+    public void usbListener(){
+        System.out.println("Attempting USB listener...");
+        //COM3, /dev/ttyUSB0, /dev/ttyACM0
+        String portName = "/dev/ttyACM0";
+        int baudRate = 115200;
+        SerialPort port;
+        try{
+            port = SerialPort.getCommPort(portName);
+        }catch(Throwable t){
+            System.out.println("Exception occurred");
+            t.printStackTrace();
+            sendChannel("I don't think the receiver is plugged :/");
+            return;
+        }
+        port.setBaudRate(baudRate);
+        port.setNumDataBits(8);
+        port.setNumStopBits(SerialPort.ONE_STOP_BIT);
+        port.setParity(SerialPort.NO_PARITY);
+        port.setComPortTimeouts(SerialPort.TIMEOUT_READ_BLOCKING, 0, 0);
+        System.out.println("Trying port...");
+        if(!port.openPort()){
+            System.err.println("Failed to open port: " + portName);
+            sendChannel("Sorry yall, I couldn't find a signal :(");
+            return;
+        }
+
+        System.out.println("Port opened. Listening...");
+        sendChannel("Good news! I found a signal :)");
+        try(InputStream in = port.getInputStream();
+        BufferedReader reader = new BufferedReader(new InputStreamReader(in))){
+
+            String line;
+            while ((line = reader.readLine()) != null) {
+                System.out.println("RX: " + line);
+            }
+        }catch(Exception e){
+            e.printStackTrace();
+        }finally{
+            port.closePort();
+            System.out.println("Port closed.");
+            sendChannel("I closed my signal :( no one was talking to me.");
+        }
+    }
+
     //////////////////////////////////////////
     //THREAD AND FINAL HANDLING///////////////
     //////////////////////////////////////////
@@ -110,13 +163,13 @@ public class App extends ListenerAdapter {
             System.out.println("SENT: '" + mess + "' \nTO: " + textChannel.getName() + "-" + id + "\n");
         }
     }
-    public void sendChannel(String id, String mess){
+    public void sendChannel(String mess){
         System.out.println("\n***CHANNEL MESSAGE***");
-        TextChannel textChannel = jda.getTextChannelById(id);
+        TextChannel textChannel = jda.getTextChannelById(mainReturnID);
 
         if (textChannel.canTalk()) {
             textChannel.sendMessage("@everyone" + "\n" + mess).queue();
-            System.out.println("SENT: '" + mess + "' \nTO: " + textChannel.getName() + "-" + id + "\n");
+            System.out.println("SENT: '" + mess + "' \nTO: " + textChannel.getName() + "-" + mainReturnID + "\n");
         }
     }
     public void startListening(){
@@ -142,15 +195,20 @@ public class App extends ListenerAdapter {
     }
 
     private void handleMessage(String line)throws IOException{
-        Scanner parse = new Scanner(line);
-        String id = parse.next();
-        String user = parse.next();
-        String mess = parse.nextLine();
+        if(line.equals("239845"))
+            usbListener();
+        else{
+            Scanner parse = new Scanner(line);
+            String id = parse.next();
+            String user = parse.next();
+            String mess = parse.nextLine();
 
-        System.out.println("\nProcessing: '" + mess + "' on: " + Thread.currentThread().getName());
+            mainReturnID = id;
 
-        try{sendUser(id, user, commandHandler(id, user, mess));}catch(InterruptedException e){System.out.println("CAUGHT EXCEPTION");}
+            System.out.println("\nProcessing: '" + mess + "' on: " + Thread.currentThread().getName());
 
+            try{sendUser(id, user, commandHandler(id, user, mess));}catch(InterruptedException e){System.out.println("CAUGHT EXCEPTION");}
+        }
     }
 
     public void receiveMessage(String line) {
