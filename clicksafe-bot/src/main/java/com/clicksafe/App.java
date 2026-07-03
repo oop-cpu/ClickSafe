@@ -107,17 +107,19 @@ public class App extends ListenerAdapter {
     }
 
     public void usbListener(){
+        delay(500);
         System.out.println("Attempting USB listener...");
         //COM3, /dev/ttyUSB0, /dev/ttyACM0
-        String portName = "/dev/ttyACM0";
-        int baudRate = 115200;
+        String portName = "/dev/ttyUSB0";
+        int baudRate = 9600;
         SerialPort port;
+        System.out.println("PORT: " + portName + "\nBR: " + baudRate);
         try{
             port = SerialPort.getCommPort(portName);
         }catch(Throwable t){
             System.out.println("Exception occurred");
             t.printStackTrace();
-            sendChannel("I don't think the receiver is plugged :/");
+            sendChannel("I don't think the receiver is plugged in :/");
             return;
         }
         port.setBaudRate(baudRate);
@@ -131,7 +133,6 @@ public class App extends ListenerAdapter {
             sendChannel("Sorry yall, I couldn't find a signal :(");
             return;
         }
-
         System.out.println("Port opened. Listening...");
         sendChannel("Good news! I found a signal :)");
         try(InputStream in = port.getInputStream();
@@ -140,6 +141,7 @@ public class App extends ListenerAdapter {
             String line;
             while ((line = reader.readLine()) != null) {
                 System.out.println("RX: " + line);
+                sendChannel(line);
             }
         }catch(Exception e){
             e.printStackTrace();
